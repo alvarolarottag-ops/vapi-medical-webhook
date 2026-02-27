@@ -1,0 +1,13 @@
+  "name": "vapi-medical-webhook",
+  "version": "1.0.0",
+  "description": "Webhook para Vapi - Google Calendar",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "googleapis": "^133.0.0"
+  }
+}
