@@ -1,4 +1,4 @@
-  "name": "vapi-medical-webhook",
+  {"name": "vapi-medical-webhook",
   "version": "1.0.0",
   "description": "Webhook para Vapi - Google Calendar",
   "main": "index.js",
