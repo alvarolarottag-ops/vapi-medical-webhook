@@ -4,6 +4,9 @@ import { google } from "googleapis";
 const app = express();
 app.use(express.json());
 
+// ============================
+// Google Calendar Client
+// ============================
 function getCalendarClient() {
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
@@ -17,13 +20,20 @@ function getCalendarClient() {
   return google.calendar({ version: "v3", auth: oauth2Client });
 }
 
+// ============================
+// Health Check
+// ============================
 app.get("/", (_req, res) => {
   res.json({ ok: true });
 });
 
+// ============================
+// Vapi Tools Webhook
+// ============================
 app.post("/vapi/tools", async (req, res) => {
   try {
     const message = req.body?.message;
+
     if (!message || message.type !== "tool-calls") {
       return res.status(400).json({ error: "Invalid payload" });
     }
@@ -38,7 +48,9 @@ app.post("/vapi/tools", async (req, res) => {
       const name = toolCall.function?.name;
       const args = toolCall.function?.arguments || {};
 
-      // ✅ CANCELAR CITA
+      // ============================
+      // CANCELAR CITA
+      // ============================
       if (name === "cancel_appointment") {
         await calendar.events.delete({
           calendarId,
@@ -49,17 +61,19 @@ app.post("/vapi/tools", async (req, res) => {
           toolCallId,
           result: {
             ok: true,
-            message: "La cita fue cancelada correctamente."
+            message: "La cita fue cancelada correctamente.",
           },
         });
         continue;
       }
 
-      // ✅ REAGENDAR CITA
+      // ============================
+      // REAGENDAR CITA
+      // ============================
       if (name === "reschedule_appointment") {
         const { eventId, start, end } = args;
 
-        // Verificar conflicto antes de mover
+        // Verificar conflictos antes de mover
         const conflictCheck = await calendar.events.list({
           calendarId,
           timeMin: start,
@@ -72,7 +86,7 @@ app.post("/vapi/tools", async (req, res) => {
             toolCallId,
             result: {
               ok: false,
-              message: "No hay disponibilidad en el horario solicitado."
+              message: "No hay disponibilidad en el horario solicitado.",
             },
           });
           continue;
@@ -91,64 +105,36 @@ app.post("/vapi/tools", async (req, res) => {
           toolCallId,
           result: {
             ok: true,
-            message: "La cita fue reprogramada correctamente."
+            message: "La cita fue reprogramada correctamente.",
           },
         });
         continue;
       }
 
-      // ✅ CREAR CITA (VALIDACIÓN REAL DE DISPONIBILIDAD)
-      if (name === "create_appointment") {
-        const { start, end, summary, description } = args;
-
-        // Verificar si hay eventos en ese rango
-        const conflictCheck = await calendar.events.list({
-          calendarId,
-          timeMin: start,
-          timeMax: end,
-          singleEvents: true,
-        });
-
-        if (conflictCheck.data.items.length > 0) {
-          results.push({
-            toolCallId,
-            result: {
-              ok: false,
-              message: "Ese horario ya se encuentra ocupado."
-            },
-          });
-          continue;
-        }
-
-        await calendar.events.insert({
-          calendarId,
-          requestBody: {
-            summary,
-            description,
-            start: { dateTime: start },
-            end: { dateTime: end },
-          },
-        });
-
-        results.push({
-          toolCallId,
-          result: {
-            ok: true,
-            message: "La cita fue agendada correctamente."
-          },
-        });
-        continue;
-      }
+      // ============================
+      // BLOQUEO DE CREACIÓN DE CITAS
+      // ============================
+      results.push({
+        toolCallId,
+        result: {
+          ok: false,
+          message:
+            "La creación de citas está deshabilitada en este servicio.",
+        },
+      });
     }
 
     res.json({ results });
   } catch (error) {
-    console.error(error);
+    console.error("Webhook error:", error);
     res.status(500).json({ error: "Error interno del servidor" });
   }
 });
 
+// ============================
+// Server
+// ============================
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
-  console.log(`Listening on port ${port}`);
+  console.log(`✅ Vapi Medical Webhook running on port ${port}`);
 });
