@@ -49,7 +49,35 @@ app.post("/vapi/tools", async (req, res) => {
       const args = toolCall.function?.arguments || {};
 
       // ============================
-      // CANCELAR CITA
+      // ✅ VALIDAR DISPONIBILIDAD (FUENTE DE VERDAD)
+      // ============================
+      if (name === "check_availability") {
+        const { start, end } = args;
+
+        const conflictCheck = await calendar.events.list({
+          calendarId,
+          timeMin: start,
+          timeMax: end,
+          singleEvents: true,
+          orderBy: "startTime",
+        });
+
+        const items = conflictCheck.data.items || [];
+        const hasConflict = items.length > 0;
+
+        results.push({
+          toolCallId,
+          result: {
+            ok: true,
+            available: !hasConflict,
+          },
+        });
+
+        continue;
+      }
+
+      // ============================
+      // ✅ CANCELAR CITA
       // ============================
       if (name === "cancel_appointment") {
         await calendar.events.delete({
@@ -68,20 +96,22 @@ app.post("/vapi/tools", async (req, res) => {
       }
 
       // ============================
-      // REAGENDAR CITA
+      // ✅ REAGENDAR CITA (CON VALIDACIÓN REAL)
       // ============================
       if (name === "reschedule_appointment") {
         const { eventId, start, end } = args;
 
-        // Verificar conflictos antes de mover
         const conflictCheck = await calendar.events.list({
           calendarId,
           timeMin: start,
           timeMax: end,
           singleEvents: true,
+          orderBy: "startTime",
         });
 
-        if (conflictCheck.data.items.length > 0) {
+        const items = conflictCheck.data.items || [];
+
+        if (items.length > 0) {
           results.push({
             toolCallId,
             result: {
@@ -108,11 +138,12 @@ app.post("/vapi/tools", async (req, res) => {
             message: "La cita fue reprogramada correctamente.",
           },
         });
+
         continue;
       }
 
       // ============================
-      // BLOQUEO DE CREACIÓN DE CITAS
+      // ❌ BLOQUEO TOTAL DE CREACIÓN EN BACKEND
       // ============================
       results.push({
         toolCallId,
