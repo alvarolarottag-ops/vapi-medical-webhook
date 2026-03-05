@@ -21,6 +21,15 @@ function getCalendarClient() {
 }
 
 // ============================
+// Helper: Validar lunes a viernes
+// ============================
+function isWeekday(dateString) {
+  const date = new Date(dateString);
+  const day = date.getDay(); // 0 = domingo, 6 = sábado
+  return day >= 1 && day <= 5;
+}
+
+// ============================
 // Health Check
 // ============================
 app.get("/", (_req, res) => {
@@ -49,29 +58,68 @@ app.post("/vapi/tools", async (req, res) => {
       const args = toolCall.function?.arguments || {};
 
       // ============================
-      // ✅ VALIDAR DISPONIBILIDAD (FUENTE DE VERDAD)
+      // ✅ CHECK AVAILABILITY
       // ============================
       if (name === "check_availability") {
-        const { start, end } = args;
+        try {
+          const { start, end } = args;
 
-        const conflictCheck = await calendar.events.list({
-          calendarId,
-          timeMin: start,
-          timeMax: end,
-          singleEvents: true,
-          orderBy: "startTime",
-        });
+          if (!start || !end) {
+            results.push({
+              toolCallId,
+              result: {
+                ok: false,
+                available: false,
+                message: "Datos de fecha inválidos."
+              },
+            });
+            continue;
+          }
 
-        const items = conflictCheck.data.items || [];
-        const hasConflict = items.length > 0;
+          // 🔒 Restricción lunes a viernes
+          if (!isWeekday(start)) {
+            results.push({
+              toolCallId,
+              result: {
+                ok: true,
+                available: false,
+                message:
+                  "Solo es posible agendar citas de lunes a viernes.",
+              },
+            });
+            continue;
+          }
 
-        results.push({
-          toolCallId,
-          result: {
-            ok: true,
-            available: !hasConflict,
-          },
-        });
+          const conflictCheck = await calendar.events.list({
+            calendarId,
+            timeMin: start,
+            timeMax: end,
+            singleEvents: true,
+            orderBy: "startTime",
+          });
+
+          const items = conflictCheck.data.items || [];
+          const hasConflict = items.length > 0;
+
+          results.push({
+            toolCallId,
+            result: {
+              ok: true,
+              available: !hasConflict,
+            },
+          });
+        } catch (err) {
+          console.error("Error en check_availability:", err);
+          results.push({
+            toolCallId,
+            result: {
+              ok: false,
+              available: false,
+              message:
+                "No fue posible verificar disponibilidad en este momento.",
+            },
+          });
+        }
 
         continue;
       }
@@ -92,31 +140,42 @@ app.post("/vapi/tools", async (req, res) => {
             message: "La cita fue cancelada correctamente.",
           },
         });
+
         continue;
       }
 
       // ============================
-      // ✅ REAGENDAR CITA (CON VALIDACIÓN REAL)
+      // ✅ REAGENDAR CITA
       // ============================
       if (name === "reschedule_appointment") {
         const { eventId, start, end } = args;
+
+        if (!isWeekday(start)) {
+          results.push({
+            toolCallId,
+            result: {
+              ok: false,
+              message:
+                "Solo es posible agendar citas de lunes a viernes.",
+            },
+          });
+          continue;
+        }
 
         const conflictCheck = await calendar.events.list({
           calendarId,
           timeMin: start,
           timeMax: end,
           singleEvents: true,
-          orderBy: "startTime",
         });
 
-        const items = conflictCheck.data.items || [];
-
-        if (items.length > 0) {
+        if (conflictCheck.data.items.length > 0) {
           results.push({
             toolCallId,
             result: {
               ok: false,
-              message: "No hay disponibilidad en el horario solicitado.",
+              message:
+                "No hay disponibilidad en el horario solicitado.",
             },
           });
           continue;
@@ -135,7 +194,8 @@ app.post("/vapi/tools", async (req, res) => {
           toolCallId,
           result: {
             ok: true,
-            message: "La cita fue reprogramada correctamente.",
+            message:
+              "La cita fue reprogramada correctamente.",
           },
         });
 
@@ -143,7 +203,7 @@ app.post("/vapi/tools", async (req, res) => {
       }
 
       // ============================
-      // ❌ BLOQUEO TOTAL DE CREACIÓN EN BACKEND
+      // ❌ BLOQUEAR CREACIÓN
       // ============================
       results.push({
         toolCallId,
@@ -167,5 +227,5 @@ app.post("/vapi/tools", async (req, res) => {
 // ============================
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
-  console.log(`✅ Vapi Medical Webhook running on port ${port}`);
+  console.log(`✅ Webhook corriendo en puerto ${port}`);
 });
